@@ -69,13 +69,16 @@ def search_new_ids(initial_search_parameters, kv_table):
         current_result = search_simple(initial_search_parameters)
         log.info("process {} page, result {}".format(j, current_result.error_code))
         id_set_to_process = set()
+        found_element = False
         for found_id in current_result.found_id:
             if kv_table.find_one(kvid=found_id) is None:
                 id_set_to_process.add(found_id)
             else:
                 log.info("Already have {}, it means we are done with new stuff".format(found_id))
-                return id_set
+                found_element = True
         id_set.update(id_set_to_process)
+        if found_element:
+            return id_set
     log.info("New id's {}".format(id_set))
     return id_set
 
@@ -108,23 +111,23 @@ if __name__ == '__main__':
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Synchronization started {}".format(datetime.now()))
-    db = dataset.connect('sqlite:///{}'.format(constants.DB_FILE))
-    table = db[constants.KVOBJECT]
+    obj_db = dataset.connect('sqlite:///{}'.format(constants.DB_FILE))
+    kv_object_table = obj_db[constants.KVOBJECT]
 
     parameters = SearchSimpleParameters()
     parameters.parish = 421  # Tallinn
-    result = search_new_ids(parameters, table)
+    result = search_new_ids(parameters, kv_object_table)
     i = 0
     id_set_size = len(result)
     for kv_ee_id in result:
         try:
-            table.insert(get_info(kv_ee_id).__dict__())
+            kv_object_table.insert(get_info(kv_ee_id).__dict__())
             logger.info("{} / {} done ".format(i, id_set_size))
             i += 1
         except Exception as e:
             try:  # i know it's stupid :(
                 logger.exception("exception during getting info for id {} - {}".format(kv_ee_id, sys.exc_info()[0]))
-                table.insert({"kvid": kv_ee_id, "parsed_status": "error", "parsed_error_info": str(e),
+                kv_object_table.insert({"kvid": kv_ee_id, "parsed_status": "error", "parsed_error_info": str(e),
                               "parsed_date": datetime.now()})
             except:
                 logger.error("Error! cannot process {} ".format(kv_ee_id))
@@ -136,19 +139,19 @@ if __name__ == '__main__':
     lasn_2 = 0
     new_3 = 0
     average = 0
-    for i in db.query("select sum(price) / count(*) from kv_object where rooms=2 and block='Lasnamäe'"):
+    for i in obj_db.query("select sum(price) / count(*) from kv_object where rooms=2 and block='Lasnamäe'"):
         lasn_2 = i['sum(price) / count(*)']
 
-    for i in db.query("select sum(price) / count(*) from kv_object where build_year>2014 and rooms=3"):
+    for i in obj_db.query("select sum(price) / count(*) from kv_object where build_year>2014 and rooms=3"):
         new_3 = i['sum(price) / count(*)']
 
-    for i in db.query("select sum(price/area) / count(*) from kv_object"):
+    for i in obj_db.query("select sum(price/area) / count(*) from kv_object"):
         average = i['sum(price/area) / count(*)']
 
-    db = dataset.connect('sqlite:///{}'.format(constants.DB_FILE_STATS))
-    table = db[constants.KVSTATS]
-    insert_or_update('lasn_2', lasn_2, table)
-    insert_or_update('new_3', new_3, table)
-    insert_or_update('average', average, table)
-
+    stats_db = dataset.connect('sqlite:///{}'.format(constants.DB_FILE_STATS))
+    kv_stats_table = stats_db[constants.KVSTATS]
+    insert_or_update('lasn_2', lasn_2, kv_stats_table)
+    insert_or_update('new_3', new_3, kv_stats_table)
+    insert_or_update('average', average, kv_stats_table)
     logger.info("Synchronization finished {}".format(datetime.now()))
+
